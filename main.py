@@ -7,8 +7,7 @@ from collections import Counter
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import asyncio
 
-logging.basicConfig(level=logging.INFO, filename='bot_log.log',
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token='7642582758:AAGmpst4s13Rs7RagaJQAsMF_0nffREqUgk')
 dp = Dispatcher(bot)
