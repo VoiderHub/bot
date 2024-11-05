@@ -1,13 +1,14 @@
 import os
 import logging
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from keep_alive import keep_alive
 from collections import Counter
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import asyncio
 from dotenv import load_dotenv
+import re
+
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -94,11 +95,21 @@ def get_start_keyboard():
     markup.add(KeyboardButton("Поїхали! 🚀"))
     return markup
 
+# Валідація номера телефону
+def validate_phone_number(phone_number):
+    pattern = r'^\+380\d{9}$'
+    return bool(re.match(pattern, phone_number))
+
 # Обробник для отримання імені
 @dp.message_handler(lambda message: message.chat.id in user_data and user_data[message.chat.id]['name'] is None)
 async def get_name(message: types.Message):
     user_data[message.chat.id]['name'] = message.text
-    await message.answer("Тепер поділися, будь ласка, своїм номером телефону.", reply_markup=get_phone_keyboard())
+    await message.answer("Тепер поділися, будь ласка, своїм номером телефону натиснувши кнопку нижче.", reply_markup=get_phone_keyboard())
+    await asyncio.sleep(0.8)
+    await message.answer("Також ти можеш написати номер вручну.\nДля цього введи номер телефону у форматі: +380XXXXXXXXX.")
+    # await asyncio.sleep(0.7)
+    # await message.answer("Для цього введи номер телефону у форматі: +380XXXXXXXXX.")
+
 
 # Обробник для отримання номера телефону
 @dp.message_handler(content_types=types.ContentType.CONTACT)
@@ -108,6 +119,15 @@ async def get_phone(message: types.Message):
         await message.answer("Дякую! Тепер натисни 'Поїхали! 🚀', щоб почати опитування.", reply_markup=get_start_keyboard())
     else:
         await message.answer("Будь ласка, скористайтеся командою /start для початку.")
+
+@dp.message_handler(lambda message: message.chat.id in user_data and user_data[message.chat.id]['phone'] is None)
+async def manual_phone_input(message: types.Message):
+    phone_number = message.text
+    if validate_phone_number(phone_number):
+        user_data[message.chat.id]['phone'] = phone_number
+        await message.answer("Дякую! Тепер натисни 'Поїхали! 🚀', щоб почати опитування.", reply_markup=get_start_keyboard())
+    else:
+        await message.answer("Будь ласка, введіть номер телефону у форматі +380000000000 або скористайтеся кнопкою для відправки номера.")
 
 # Обробник команди /start
 @dp.message_handler(commands=['start'])
