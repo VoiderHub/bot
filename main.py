@@ -1,3 +1,4 @@
+import os
 import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
@@ -6,12 +7,19 @@ from keep_alive import keep_alive
 from collections import Counter
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import asyncio
+from dotenv import load_dotenv
 
+load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token='7642582758:AAGmpst4s13Rs7RagaJQAsMF_0nffREqUgk')
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
+
+
+# Ваша ID
+ADMIN_ID = os.getenv('ADMIN_ID')
 
 # Запитання
 questions = [
@@ -72,11 +80,56 @@ questions = [
     "   f) Аналіз даних та створення візуалізацій\n"
 ]
 
-
-# Відповіді користувачів зберігаємо в словнику
 user_answers = {}
-# Словник для зберігання статусу сесії опитування
-survey_started = {}
+user_data = {}
+
+def get_phone_keyboard():
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    phone_button = KeyboardButton("Поділитися номером телефону", request_contact=True)
+    markup.add(phone_button)
+    return markup
+
+def get_start_keyboard():
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(KeyboardButton("Поїхали! 🚀"))
+    return markup
+
+# Обробник для отримання імені
+@dp.message_handler(lambda message: message.chat.id in user_data and user_data[message.chat.id]['name'] is None)
+async def get_name(message: types.Message):
+    user_data[message.chat.id]['name'] = message.text
+    await message.answer("Тепер поділися, будь ласка, своїм номером телефону.", reply_markup=get_phone_keyboard())
+
+# Обробник для отримання номера телефону
+@dp.message_handler(content_types=types.ContentType.CONTACT)
+async def get_phone(message: types.Message):
+    if message.contact and message.chat.id in user_data:
+        user_data[message.chat.id]['phone'] = message.contact.phone_number
+        await message.answer("Дякую! Тепер натисни 'Поїхали! 🚀', щоб почати опитування.", reply_markup=get_start_keyboard())
+    else:
+        await message.answer("Будь ласка, скористайтеся командою /start для початку.")
+
+# Обробник команди /start
+@dp.message_handler(commands=['start'])
+async def send_welcome(message: types.Message):
+    user_info = (
+        f"Інформація про користувача:\n"
+        f"ID: {message.from_user.id}\n"
+        f"Ім'я: {message.from_user.first_name}\n"
+        f"Прізвище: {message.from_user.last_name}\n"
+        f"Юзернейм: {message.from_user.username}\n"
+        f"Мова: {message.from_user.language_code}\n"
+        f"Чат ID: {message.chat.id}\n"
+        f"Тип чату: {message.chat.type}\n"
+    )
+    
+    await bot.send_message(ADMIN_ID, user_info)  # Надсилаємо інформацію адміну
+    
+    await message.answer("Привіт! Я допоможу тобі із вибором ІТ-школи, яка найкраще відповідає твоїм здібностям.")
+    await asyncio.sleep(1)
+    await message.answer("Як тебе звати?")
+    user_data[message.chat.id] = {'answers': [], 'name': None, 'phone': None}
+
 
 # Клавіатура з варіантами відповідей
 def get_keyboard():
@@ -97,70 +150,65 @@ def calculate_result(answers):
         'f': 'Школа аналітики бізнес процесів'
     }
 
-    # Підраховуємо кількість кожної відповіді
     answer_counts = Counter(answers)
-
-    # Знаходимо максимальну кількість відповідей
     max_count = max(answer_counts.values())
-
-    # Збираємо всі школи, які мають максимальну кількість відповідей
     most_common_answers = [
         schools[answer] for answer, count in answer_counts.items()
         if count == max_count
     ]
 
     if len(most_common_answers) == 1:
-        return f"Вам найбільше підходить {most_common_answers[0]}"
+        return f"Вам найбільше підходить: {most_common_answers[0]}"
     else:
         return f"Вам найбільше підходять: {', '.join(most_common_answers)}"
+    
 
-# Створюємо клавіатуру для кнопки "Поїхали!"
-def get_start_keyboard():
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(KeyboardButton("Поїхали! 🚀"))
-    return markup
 
-# Обробник команди /start
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    # Вітання від бота з кнопкою "Поїхали!"
-    await message.answer(
-        "Привіт! Я допоможу вам вибрати найбільш підходящу ІТ-школу.",
-        reply_markup=get_start_keyboard())
+# Надсилання даних адміністратору
+async def send_user_data(message, answers):
+    user_info = user_data.get(message.chat.id, {})
+    username = f"@{message.from_user.username}" if message.from_user.username else f"Користувач {message.from_user.id}"
+    name = user_info.get('name', 'Не вказано')
+    phone = user_info.get('phone', 'Не вказано')
+    result = calculate_result(answers)
+    
+    msg = (
+        f"Користувач: {username}\n"
+        f"Ім'я: {name}\n"
+        f"Номер телефону: {phone}\n"
+        f"Відповіді: {', '.join(answers)}\n"
+        f"Результат: {result}"
+    )
+    await bot.send_message(ADMIN_ID, msg)
 
 # Обробник натискання кнопки "Поїхали!"
 @dp.message_handler(lambda message: message.text == "Поїхали! 🚀")
 async def start_questions(message: types.Message):
-    user_answers[message.chat.id] = []  # Створюємо запис для відповідей користувача
-    survey_started[message.chat.id] = True  # Позначаємо, що сесія почалася
+    if user_data[message.chat.id]['name'] is None or user_data[message.chat.id]['phone'] is None:
+        await message.answer("Будь ласка, введіть ім'я та номер телефону перед початком опитування.")
+        return
+    user_answers[message.chat.id] = []
     await message.answer(questions[0], reply_markup=get_keyboard())
 
-# Обробник відповідей користувача
+# Обробник відповідей
 @dp.message_handler(lambda message: message.text.lower() in ['a', 'b', 'c', 'd', 'e', 'f'])
 async def handle_answer(message: types.Message):
-    # Перевіряємо, чи почалася сесія опитування
-    if message.chat.id not in survey_started or not survey_started[message.chat.id]:
-        await message.answer(
-            "Будь ласка, спочатку натисніть 'Поїхали! 🚀'",
-            reply_markup=get_start_keyboard()  # Додаємо кнопку "Поїхали!"
-        )
-        return
-
     current_answers = user_answers[message.chat.id]
     current_question_index = len(current_answers)
 
     if current_question_index < len(questions):
         current_answers.append(message.text.lower())
-
         if current_question_index + 1 < len(questions):
             await message.answer(questions[current_question_index + 1], reply_markup=get_keyboard())
         else:
-            # Коли опитування завершено
             result = calculate_result(current_answers)
             await message.answer(result)
-            await message.answer("Дякую за участь! Якщо ви хочете пройти опитування знову, натисніть 'Поїхали! 🚀'", reply_markup=get_start_keyboard())
-            # Завершуємо сесію
-            survey_started[message.chat.id] = False
+            await send_user_data(message, current_answers)
+            del user_answers[message.chat.id]
+            # Повідомлення про можливість пройти тест знову
+            await message.answer("Щоб пройти тестування знову, повторно введіть /start.")
+
+
 
 async def main():
     while True:
@@ -168,7 +216,7 @@ async def main():
             await dp.start_polling()
         except Exception as e:
             logging.error(f"Помилка під час polling: {e}")
-            await asyncio.sleep(15)  # Почекайте перед повторним підключенням
+            await asyncio.sleep(15)
 
 if __name__ == '__main__':
     keep_alive()
