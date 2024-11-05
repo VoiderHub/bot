@@ -117,7 +117,7 @@ async def send_welcome(message: types.Message):
         f"ID: {message.from_user.id}\n"
         f"Ім'я: {message.from_user.first_name}\n"
         f"Прізвище: {message.from_user.last_name}\n"
-        f"Юзернейм: {message.from_user.username}\n"
+        f"Юзернейм: @{message.from_user.username}\n"
         f"Мова: {message.from_user.language_code}\n"
         f"Чат ID: {message.chat.id}\n"
         f"Тип чату: {message.chat.type}\n"
@@ -202,12 +202,11 @@ async def handle_answer(message: types.Message):
             await message.answer(questions[current_question_index + 1], reply_markup=get_keyboard())
         else:
             result = calculate_result(current_answers)
-            await message.answer(result)
+            await message.answer(result, reply_markup=types.ReplyKeyboardRemove())  # Очищаємо клавіатуру
             await send_user_data(message, current_answers)
             del user_answers[message.chat.id]
             # Повідомлення про можливість пройти тест знову
             await message.answer("Щоб пройти тестування знову, повторно введіть /start.")
-
 
 
 async def main():
