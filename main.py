@@ -104,6 +104,7 @@ def validate_phone_number(phone_number):
 @dp.message_handler(lambda message: message.chat.id in user_data and user_data[message.chat.id]['name'] is None)
 async def get_name(message: types.Message):
     user_data[message.chat.id]['name'] = message.text
+    logging.info(f"Користувач {message.chat.id} вказав ім'я: {message.text}")
     await message.answer("Тепер поділися, будь ласка, своїм номером телефону натиснувши кнопку нижче.", reply_markup=get_phone_keyboard())
     await asyncio.sleep(0.8)
     await message.answer("Також ти можеш написати номер вручну.\nДля цього введи номер телефону у форматі: +380XXXXXXXXX.")
@@ -116,6 +117,7 @@ async def get_name(message: types.Message):
 async def get_phone(message: types.Message):
     if message.contact and message.chat.id in user_data:
         user_data[message.chat.id]['phone'] = message.contact.phone_number
+        logging.info(f"Користувач {message.chat.id} надіслав номер телефону: {message.contact.phone_number}")
         await message.answer("Дякую! Тепер натисни 'Поїхали! 🚀', щоб почати опитування.", reply_markup=get_start_keyboard())
     else:
         await message.answer("Будь ласка, скористайтеся командою /start для початку.")
@@ -125,6 +127,7 @@ async def manual_phone_input(message: types.Message):
     phone_number = message.text
     if validate_phone_number(phone_number):
         user_data[message.chat.id]['phone'] = phone_number
+        logging.info(f"Користувач {message.chat.id} вказав номер телефону вручну: {phone_number}")
         await message.answer("Дякую! Тепер натисни 'Поїхали! 🚀', щоб почати опитування.", reply_markup=get_start_keyboard())
     else:
         await message.answer("Будь ласка, введіть номер телефону у форматі +380000000000 або скористайтеся кнопкою для відправки номера.")
@@ -144,6 +147,7 @@ async def send_welcome(message: types.Message):
     )
     
     await bot.send_message(ADMIN_ID, user_info)  # Надсилаємо інформацію адміну
+    logging.info(f"Надіслано інформацію про користувача {message.from_user.username} адміністратору.")
     
     await message.answer("Привіт! Я допоможу тобі із вибором ІТ-школи, яка найкраще відповідає твоїм здібностям.")
     await asyncio.sleep(1)
@@ -200,15 +204,18 @@ async def send_user_data(message, answers):
         f"Результат: {result}"
     )
     await bot.send_message(ADMIN_ID, msg)
+    logging.info(f"Надіслано результати користувача {username} адміністратору.")
 
 # Обробник натискання кнопки "Поїхали!"
 @dp.message_handler(lambda message: message.text == "Поїхали! 🚀")
 async def start_questions(message: types.Message):
     if user_data[message.chat.id]['name'] is None or user_data[message.chat.id]['phone'] is None:
         await message.answer("Будь ласка, введіть ім'я та номер телефону перед початком опитування.")
+        logging.warning(f"Користувач {message.chat.id} намагається почати опитування без імені або номера телефону.")
         return
     user_answers[message.chat.id] = []
     await message.answer(questions[0], reply_markup=get_keyboard())
+    logging.info(f"Користувач {message.chat.id} починає опитування.")
 
 # Обробник відповідей
 @dp.message_handler(lambda message: message.text.lower() in ['a', 'b', 'c', 'd', 'e', 'f'])
@@ -218,6 +225,7 @@ async def handle_answer(message: types.Message):
 
     if current_question_index < len(questions):
         current_answers.append(message.text.lower())
+        logging.info(f"Користувач {message.chat.id} відповідає на питання {current_question_index + 1}: {message.text.lower()}")
         if current_question_index + 1 < len(questions):
             await message.answer(questions[current_question_index + 1], reply_markup=get_keyboard())
         else:
@@ -225,8 +233,10 @@ async def handle_answer(message: types.Message):
             await message.answer(result, reply_markup=types.ReplyKeyboardRemove())  # Очищаємо клавіатуру
             await send_user_data(message, current_answers)
             del user_answers[message.chat.id]
+            
             # Повідомлення про можливість пройти тест знову
             await message.answer("Щоб пройти тестування знову, повторно введіть /start.")
+            logging.info(f"Користувач {message.chat.id} завершив опитування.")
 
 
 async def main():
